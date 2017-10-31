@@ -1,14 +1,11 @@
-﻿using System;
+﻿using Catnap.Server.Util;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Windows.Web;
-using Windows.Web.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.IO;
-using Catnap.Server.Util;
+using System.Threading.Tasks;
+using Windows.Web.Http;
 
 namespace Catnap.Server
 {
@@ -16,24 +13,27 @@ namespace Catnap.Server
     {
         public string Prefix = "";
         public List<MethodInfo> RoutingMethods = new List<MethodInfo>();
+        public HttpRequest Request { get; private set; }
 
         public Controller()
         {
             var type = this.GetType().GetTypeInfo();
-            var routePrefix = (RoutePrefix) this.GetType().GetTypeInfo().GetCustomAttribute(typeof(RoutePrefix));
+            var routePrefix = (RoutePrefix)this.GetType().GetTypeInfo().GetCustomAttribute(typeof(RoutePrefix));
             Prefix = routePrefix.Path;
 
             var methods = GetType().GetMethods().ToList();
             methods = methods.Where(m => m.GetCustomAttribute(typeof(Route)) != null).ToList();
 
-            foreach(var m in methods)
+            foreach (var m in methods)
             {
                 RoutingMethods.Add(m);
             }
         }
 
-        public async Task<HttpResponse> Handle(HttpRequest request)
+        public virtual async Task<HttpResponse> Handle(HttpRequest request)
         {
+            Request = request;
+
             var url = request.Path;
             var httpMethod = request.Method;
 
@@ -47,7 +47,7 @@ namespace Catnap.Server
                 bool sameMethod = String.Equals(routingMethod.Method, httpMethod.Method);
                 bool matchingUrl = routingPath.Matches(requestPath);
 
-                if(sameMethod && matchingUrl)
+                if (sameMethod && matchingUrl)
                 {
                     var method = route;
                     var parameters = ExtractParameters(method, routingPath, request);
@@ -58,8 +58,8 @@ namespace Catnap.Server
                         return (HttpResponse)method.Invoke(this, parameters.ToArray());
                 }
             }
-            
-            return NotFound($"Couldn't find a fitting method on the on matched controller '{ GetType().Name }' for path '{ url }'");
+
+            return new HttpResponse(HttpStatusCode.MethodNotAllowed, $"Couldn't find a fitting method on the on matched controller '{ GetType().Name }' for path '{ url }'");
         }
 
         private List<object> ExtractParameters(MethodInfo method, RESTPath path, HttpRequest request)
@@ -68,7 +68,7 @@ namespace Catnap.Server
             var methodParams = method.GetParameters();
             var requestSegments = request.Path.AbsolutePath.Split(new char[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
 
-            foreach(var param in methodParams)
+            foreach (var param in methodParams)
             {
                 if (param.GetCustomAttribute(typeof(Body)) != null)
                     parameters.Add(request.Content);
